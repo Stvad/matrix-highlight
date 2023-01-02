@@ -2,10 +2,12 @@ import {
     Highlight,
     HIGHLIGHT_EDIT_EVENT_TYPE,
     HIGHLIGHT_EDIT_REL_TYPE,
+    HIGHLIGHT_EVENT_DATA,
     HIGHLIGHT_EVENT_TYPE,
     HIGHLIGHT_NEW_HIGHLIGHT_KEY,
     HIGHLIGHT_PAGE_KEY,
     HIGHLIGHT_STATE_EVENT_TYPE,
+    HIGHLIGHT_TEXT_KEY,
     HighlightContent,
     Message,
     Room,
@@ -113,7 +115,8 @@ export class Client {
 
     private _addExistingReplies(event: sdk.MatrixEvent, highlight: Highlight): void {
         const timelineSet = this._sdkClient.getRoom(event.getRoomId()!).getUnfilteredTimelineSet();
-        const threadReplies = timelineSet.getRelationsForEvent(event.getId(), "io.element.thread" as any, "m.room.message");
+        // todo both thread and older type for back compat
+        const threadReplies = timelineSet.getRelationsForEvent(event.getId(), "m.thread" as any, "m.room.message");
         if (!threadReplies) return;
         for (const threadEvent of threadReplies.getRelations().sort((e1, e2) => e1.getTs() - e2.getTs())) {
             highlight.addRemoteMessage(eventToMessage(threadEvent), undefined);
@@ -131,37 +134,55 @@ export class Client {
 
     private _processEvent(event: sdk.MatrixEvent, placeAtTop: boolean = false): ToContentMessage | null {
         switch (event.getType()) {
-            case HIGHLIGHT_EVENT_TYPE:
+            case HIGHLIGHT_EVENT_TYPE: {
                 const highlight = new Highlight(event.getId(), event.getContent<HighlightContent>());
-            this._addExistingReplies(event, highlight);
-            this._useLatestContent(event, highlight);
-            return {
-                type: "highlight",
-                roomId: event.getRoomId()!,
-                txnId: extractTxnId(event),
-                highlight: highlight,
-                placeAtTop,
-            };
-            case HIGHLIGHT_EDIT_EVENT_TYPE:
+                this._addExistingReplies(event, highlight);
+                this._useLatestContent(event, highlight);
+                return {
+                    type: "highlight",
+                    roomId: event.getRoomId()!,
+                    txnId: extractTxnId(event),
+                    highlight: highlight,
+                    placeAtTop,
+                };
+            }
+            case HIGHLIGHT_EDIT_EVENT_TYPE: {
                 const highlightId = event.getRelation()?.["event_id"];
-            const newContent = event.getContent()[HIGHLIGHT_NEW_HIGHLIGHT_KEY] as HighlightContent
-            if (!highlightId) return null;
-            return {
-                type: "highlight-content",
-                roomId: event.getRoomId()!,
-                highlightId,
-                highlight: newContent
-            };
-            case "m.room.message":
-                if (!event.isThreadRelation || event.isThreadRoot) return null;
-            return {
-                type: "thread-message",
-                roomId: event.getRoomId()!,
-                threadId: event.threadRootId!,
-                txnId: extractTxnId(event),
-                message: eventToMessage(event),
-                placeAtTop,
-            };
+                const newContent = event.getContent()[HIGHLIGHT_NEW_HIGHLIGHT_KEY] as HighlightContent
+                if (!highlightId) return null;
+                return {
+                    type: "highlight-content",
+                    roomId: event.getRoomId()!,
+                    highlightId,
+                    highlight: newContent
+                };
+            }
+            case 'm.room.message': {
+                const eventContent = event.getContent();
+                console.log({eventContent});
+                //todo duplicate code
+                if (eventContent[HIGHLIGHT_EVENT_DATA]) {
+                    const highlight = new Highlight(event.getId(), eventContent[HIGHLIGHT_EVENT_DATA]);
+                    this._addExistingReplies(event, highlight);
+                    this._useLatestContent(event, highlight);
+                    return {
+                        type: "highlight",
+                        roomId: event.getRoomId()!,
+                        txnId: extractTxnId(event),
+                        highlight: highlight,
+                        placeAtTop,
+                    };
+                }
+                if (!event.isThreadRelation || event.isThreadRoot) return null
+                return {
+                    type: 'thread-message',
+                    roomId: event.getRoomId()!,
+                    threadId: event.threadRootId!,
+                    txnId: extractTxnId(event),
+                    message: eventToMessage(event),
+                    placeAtTop,
+                }
+            }
             default: return null;
         }
     }
@@ -242,7 +263,7 @@ export class Client {
             "body": plainBody,
             "formatted_body": formattedBody,
             "m.relates_to": {
-                "rel_type": "io.element.thread",
+                "rel_type": "m.thread",
                 "event_id": threadId,
             }
         }, txnId.toString());
@@ -280,7 +301,13 @@ export class Client {
         }  else if (message.type === "invite-user") {
             await this._sdkClient.invite(message.roomId, message.userId);
         } else if (message.type === "send-highlight") {
-            await this._sdkClient.sendEvent(message.roomId, HIGHLIGHT_EVENT_TYPE, message.highlight, message.txnId.toString());
+            await this._sdkClient.sendMessage(message.roomId, {
+                msgtype: 'm.text',
+                format: 'org.matrix.custom.html',
+                body: message.highlight[HIGHLIGHT_TEXT_KEY].join('\n'),
+                formatted_body: '<blockquote>' + message.highlight[HIGHLIGHT_TEXT_KEY] + '</blockquote>',
+                [HIGHLIGHT_EVENT_DATA]: message.highlight,
+            }, message.txnId.toString());
         } else if (message.type === "edit-highlight") {
             this._sendHighlightEdit(message.roomId, message.highlightId, message.highlight);
         } else if (message.type === "send-thread-message") {
