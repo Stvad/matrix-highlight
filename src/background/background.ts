@@ -51,9 +51,9 @@ class WebExtPlatform extends BackgroundPlatform {
             await browser.tabs.executeScript(tab?.id, { file: "content.js" });
         }
 
-        browser.contextMenus.onClicked.addListener((_, tab) => {
-            activate(tab);
-        });
+        browser.contextMenus.onClicked.addListener((_, tab) => activate(tab));
+
+        browser.browserAction.onClicked.addListener(activate);
     }
 
     constructor() {
