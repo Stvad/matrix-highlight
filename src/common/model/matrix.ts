@@ -19,6 +19,7 @@ export const HIGHLIGHT_START_KEY = "com.danilafe.highlight_start";
 export const HIGHLIGHT_END_KEY = "com.danilafe.highlight_end";
 export const HIGHLIGHT_COLOR_KEY = "com.danilafe.highlight_color";
 export const HIGHLIGHT_TEXT_KEY = "com.danilafe.highlight_text";
+export const HIGHLIGHT_HTML_KEY = "com.danilafe.highlight_html";
 export const HIGHLIGHT_HIDDEN_KEY = "com.danilafe.highlight_hidden";
 
 export type HighlightContent = {
@@ -26,6 +27,7 @@ export type HighlightContent = {
     [HIGHLIGHT_END_KEY]: NodeData,
     [HIGHLIGHT_COLOR_KEY]: string,
     [HIGHLIGHT_TEXT_KEY]: string[],
+    [HIGHLIGHT_HTML_KEY]: string,
     [HIGHLIGHT_HIDDEN_KEY]: boolean
 }
 

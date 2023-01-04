@@ -1,9 +1,16 @@
-import {isInserted, getLength} from "./dom";
+import {getLength, isInserted} from './dom'
 import {
-    HIGHLIGHT_NODE_PATH_KEY, HIGHLIGHT_NODE_OFFSET_KEY, HIGHLIGHT_HIDDEN_KEY,
-    HIGHLIGHT_COLOR_KEY, HIGHLIGHT_START_KEY, HIGHLIGHT_END_KEY, HIGHLIGHT_TEXT_KEY,
-    NodeData, HighlightContent
-} from "../../common/model/matrix";
+    HIGHLIGHT_COLOR_KEY,
+    HIGHLIGHT_END_KEY,
+    HIGHLIGHT_HIDDEN_KEY,
+    HIGHLIGHT_HTML_KEY,
+    HIGHLIGHT_NODE_OFFSET_KEY,
+    HIGHLIGHT_NODE_PATH_KEY,
+    HIGHLIGHT_START_KEY,
+    HIGHLIGHT_TEXT_KEY,
+    HighlightContent,
+    NodeData,
+} from '../../common/model/matrix'
 
 export type NodePointer = {
     node: Node,
@@ -81,6 +88,16 @@ function pickSmaller(pathObj1: NodeData, pathObj2: NodeData) {
     return Math.sign(offset1 - offset2);
 }
 
+function getHtml(selection: Selection) {
+    const childNodes = selection.getRangeAt(0).cloneContents().childNodes
+
+    const getNodeText = (node: ChildNode) => node.nodeType === node.TEXT_NODE
+        ? node.textContent ?? ""
+        : (node as Element).outerHTML
+
+    return [...childNodes].map(getNodeText).join('')
+}
+
 export function makeEvent(selection: Selection): Omit<HighlightContent, typeof HIGHLIGHT_COLOR_KEY> | null {
     if (selection.rangeCount !== 1 || selection.type !== "Range" || !selection.anchorNode || !selection.focusNode) {
         return null;
@@ -113,6 +130,7 @@ export function makeEvent(selection: Selection): Omit<HighlightContent, typeof H
     });
     return {
         [HIGHLIGHT_TEXT_KEY]: textPieces,
+        [HIGHLIGHT_HTML_KEY]: getHtml(selection),
         [HIGHLIGHT_START_KEY]: smaller,
         [HIGHLIGHT_END_KEY]: bigger,
         [HIGHLIGHT_HIDDEN_KEY]: false,
@@ -152,7 +170,7 @@ function iterateText(fromNode: Node, toNode: Node, callback: (value: Text) => an
         } else if (currentNode instanceof Text) {
             callback(currentNode);
         }
-        
+
         // Move on to next node in the list
         while (currentNode && currentNode !== toNode && !currentNode.nextSibling) {
             currentNode = currentNode.parentNode;

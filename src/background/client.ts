@@ -4,6 +4,7 @@ import {
     HIGHLIGHT_EDIT_REL_TYPE,
     HIGHLIGHT_EVENT_DATA,
     HIGHLIGHT_EVENT_TYPE,
+    HIGHLIGHT_HTML_KEY,
     HIGHLIGHT_NEW_HIGHLIGHT_KEY,
     HIGHLIGHT_PAGE_KEY,
     HIGHLIGHT_STATE_EVENT_TYPE,
@@ -337,17 +338,15 @@ export class Client {
 
 function buildFormattedMessage(message: SendHighlightMessage) {
     const color = message.highlight[HIGHLIGHT_COLOR_KEY]
-    const text = message.highlight[HIGHLIGHT_TEXT_KEY].join('\n')
+    const text = message.highlight[HIGHLIGHT_HTML_KEY]
 
     // TODO: Element seems to ignore the style information =\
     //  So this only benefits clients that render the formatted_body more faithfully.
     //  That said, one can do better than this, by maybe adding more structure to HTML
-    const style = `background-color: ${color}; white-space: pre-wrap;`
+    const style = `background-color: ${color};`
 
     // TODO: Ideally this should be a link to the highlight
     //  Using a fragment link could be a good starting point before having a special format that triggers the extension
 
-    // TODO: if possible we should actually just rip out the original HTML from the page and use it here.
-    //  (wrapped in a quote and a link)
     return `<blockquote style="${style}">${text}</blockquote>`
 }
