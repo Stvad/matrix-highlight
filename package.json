@@ -51,6 +51,7 @@
   },
   "scripts": {
     "build": "webpack --mode production",
-    "watch": "webpack --mode development --watch"
+    "watch": "webpack --mode development --watch",
+    "package": "web-ext build --overwrite-dest --source-dir dist"
   }
 }
