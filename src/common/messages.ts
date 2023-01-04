@@ -60,6 +60,13 @@ export type ToContentMessage = {
     type: "sync-complete"
 }
 
+export type SendHighlightMessage = {
+    type: 'send-highlight',
+    roomId: string,
+    highlight: HighlightContent,
+    txnId: number
+}
+
 export type FromContentMessage = {
     type: "attempt-login",
     username: string,
@@ -83,12 +90,7 @@ export type FromContentMessage = {
     type: "invite-user",
     roomId: string,
     userId: string
-} | {
-    type: "send-highlight",
-    roomId: string,
-    highlight: HighlightContent,
-    txnId: number
-} | {
+} | SendHighlightMessage | {
     type: "edit-highlight",
     roomId: string,
     highlightId: string,

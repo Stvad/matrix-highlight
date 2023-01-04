@@ -1,5 +1,5 @@
 import {
-    Highlight,
+    Highlight, HIGHLIGHT_COLOR_KEY,
     HIGHLIGHT_EDIT_EVENT_TYPE,
     HIGHLIGHT_EDIT_REL_TYPE,
     HIGHLIGHT_EVENT_DATA,
@@ -13,9 +13,11 @@ import {
     Room,
     User,
 } from '../common/model'
-import {FromContentMessage, RoomMembership, ToContentMessage} from '../common/messages'
+import {FromContentMessage, RoomMembership, SendHighlightMessage, ToContentMessage} from '../common/messages'
 import * as sdk from 'matrix-js-sdk'
 import {BackgroundPlatform} from './backgroundPlatform'
+
+const threadRelation = "m.thread"
 
 function extractTxnId(event: sdk.MatrixEvent): number | undefined {
     let localId = undefined;
@@ -115,8 +117,7 @@ export class Client {
 
     private _addExistingReplies(event: sdk.MatrixEvent, highlight: Highlight): void {
         const timelineSet = this._sdkClient.getRoom(event.getRoomId()!).getUnfilteredTimelineSet();
-        // todo both thread and older type for back compat
-        const threadReplies = timelineSet.getRelationsForEvent(event.getId(), "m.thread" as any, "m.room.message");
+        const threadReplies = timelineSet.getRelationsForEvent(event.getId(), threadRelation, "m.room.message");
         if (!threadReplies) return;
         for (const threadEvent of threadReplies.getRelations().sort((e1, e2) => e1.getTs() - e2.getTs())) {
             highlight.addRemoteMessage(eventToMessage(threadEvent), undefined);
@@ -135,16 +136,9 @@ export class Client {
     private _processEvent(event: sdk.MatrixEvent, placeAtTop: boolean = false): ToContentMessage | null {
         switch (event.getType()) {
             case HIGHLIGHT_EVENT_TYPE: {
-                const highlight = new Highlight(event.getId(), event.getContent<HighlightContent>());
-                this._addExistingReplies(event, highlight);
-                this._useLatestContent(event, highlight);
-                return {
-                    type: "highlight",
-                    roomId: event.getRoomId()!,
-                    txnId: extractTxnId(event),
-                    highlight: highlight,
-                    placeAtTop,
-                };
+                // All new highlights are transported over 'm.room.message' events,
+                // but we're keep this for back-compatibility
+                return this.highlightEvent(event, event.getContent<HighlightContent>(), placeAtTop)
             }
             case HIGHLIGHT_EDIT_EVENT_TYPE: {
                 const highlightId = event.getRelation()?.["event_id"];
@@ -159,20 +153,10 @@ export class Client {
             }
             case 'm.room.message': {
                 const eventContent = event.getContent();
-                console.log({eventContent});
-                //todo duplicate code
                 if (eventContent[HIGHLIGHT_EVENT_DATA]) {
-                    const highlight = new Highlight(event.getId(), eventContent[HIGHLIGHT_EVENT_DATA]);
-                    this._addExistingReplies(event, highlight);
-                    this._useLatestContent(event, highlight);
-                    return {
-                        type: "highlight",
-                        roomId: event.getRoomId()!,
-                        txnId: extractTxnId(event),
-                        highlight: highlight,
-                        placeAtTop,
-                    };
+                    return this.highlightEvent(event, eventContent[HIGHLIGHT_EVENT_DATA], placeAtTop);
                 }
+
                 if (!event.isThreadRelation || event.isThreadRoot) return null
                 return {
                     type: 'thread-message',
@@ -184,6 +168,23 @@ export class Client {
                 }
             }
             default: return null;
+        }
+    }
+
+    private highlightEvent(
+        event: sdk.MatrixEvent,
+        highlightContent: HighlightContent,
+        placeAtTop: boolean
+    ): ToContentMessage {
+        const highlight = new Highlight(event.getId(), highlightContent)
+        this._addExistingReplies(event, highlight)
+        this._useLatestContent(event, highlight)
+        return {
+            type: 'highlight',
+            roomId: event.getRoomId()!,
+            txnId: extractTxnId(event),
+            highlight: highlight,
+            placeAtTop,
         }
     }
 
@@ -263,7 +264,7 @@ export class Client {
             "body": plainBody,
             "formatted_body": formattedBody,
             "m.relates_to": {
-                "rel_type": "m.thread",
+                "rel_type": threadRelation,
                 "event_id": threadId,
             }
         }, txnId.toString());
@@ -301,13 +302,7 @@ export class Client {
         }  else if (message.type === "invite-user") {
             await this._sdkClient.invite(message.roomId, message.userId);
         } else if (message.type === "send-highlight") {
-            await this._sdkClient.sendMessage(message.roomId, {
-                msgtype: 'm.text',
-                format: 'org.matrix.custom.html',
-                body: message.highlight[HIGHLIGHT_TEXT_KEY].join('\n'),
-                formatted_body: '<blockquote>' + message.highlight[HIGHLIGHT_TEXT_KEY] + '</blockquote>',
-                [HIGHLIGHT_EVENT_DATA]: message.highlight,
-            }, message.txnId.toString());
+            await this.sendHighlight(message)
         } else if (message.type === "edit-highlight") {
             this._sendHighlightEdit(message.roomId, message.highlightId, message.highlight);
         } else if (message.type === "send-thread-message") {
@@ -316,6 +311,18 @@ export class Client {
             this._loadRoom(message.roomId);
         }
     }
+
+    private async sendHighlight(message: SendHighlightMessage) {
+        await this._sdkClient.sendMessage(message.roomId, {
+            msgtype: 'm.text',
+            format: 'org.matrix.custom.html',
+
+            body: message.highlight[HIGHLIGHT_TEXT_KEY].join('\n'),
+            formatted_body: buildFormattedMessage(message),
+            [HIGHLIGHT_EVENT_DATA]: message.highlight,
+        }, message.txnId.toString())
+    }
+
     private async joinAndConfigureRoom(roomId: string, url: string) {
         await this._sdkClient.joinRoom(roomId)
         // TODO: this doesn't really work as intended rn.
@@ -326,4 +333,21 @@ export class Client {
         //  It works ok, if someone else has already configured the room and you're just joining it though.
         await this._sdkClient.sendStateEvent(roomId, HIGHLIGHT_STATE_EVENT_TYPE, {url}, "");
     }
+}
+
+function buildFormattedMessage(message: SendHighlightMessage) {
+    const color = message.highlight[HIGHLIGHT_COLOR_KEY]
+    const text = message.highlight[HIGHLIGHT_TEXT_KEY].join('\n')
+
+    // TODO: Element seems to ignore the style information =\
+    //  So this only benefits clients that render the formatted_body more faithfully.
+    //  That said, one can do better than this, by maybe adding more structure to HTML
+    const style = `background-color: ${color}; white-space: pre-wrap;`
+
+    // TODO: Ideally this should be a link to the highlight
+    //  Using a fragment link could be a good starting point before having a special format that triggers the extension
+
+    // TODO: if possible we should actually just rip out the original HTML from the page and use it here.
+    //  (wrapped in a quote and a link)
+    return `<blockquote style="${style}">${text}</blockquote>`
 }
