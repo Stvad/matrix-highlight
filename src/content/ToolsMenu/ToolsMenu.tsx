@@ -109,10 +109,8 @@ const DefaultView = (props: ToolsMenuProps) => {
             { currentRoom ?
                 <>
                     <h3>Current Room</h3>
-                    <RoomButton icon={Settings} title="Settings" subtitle="Configure room name, description, etc." onClick={() => openTab("settings")}/>
                     <RoomButton icon={Users} title="Users" subtitle="View or invite users." onClick={() => openTab("users")}/>
                     <RoomButton icon={AlignLeft} title="Quotes" subtitle="See and discuss what has been highlighted on the page." onClick={() => openTab("quotes")}/>
-                    <RoomButton icon={MessageSquare} title="Comments" subtitle="View conversation about this page." onClick={() => openTab("comments")}/>
                 </> : null }
         </>
     );
